@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+
+  <script src="wasm_exec.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
+  <!-- script src="qlearning.js"></script -->
+</head>
+
+<body style="height: 100%">
+
+
+
+  <canvas id="canvas" width="1280" height="720" style="border: 1px solid cadetblue;"></canvas>
+
+  <script>
+
+    // geScore () - получить кол-во очков
+    // geRays ()- получить длину лучей)
+    // geStatus () - получить статус жизни кирпича, true жива, false дохлый, null инфа почему-то не пришла)
+    //
+    // JumpStatus - true летим, false падаем)
+    // Restart () - вызов этой функции делает рестарт
+
+    const go = new Go();
+    // WebAssembly.instantiate(fetch("lib.wasm"), go.importObject).then((result) => {
+    //     go.run(result.instance);
+    // });
+    // WebAssembly.instantiateStreaming(fetch("lib.wasm"), go.importObject).then((result) => {
+    //     go.run(result.instance);
+    // });
+
+    fetch('lib.wasm').then(response =>
+      response.arrayBuffer()
+    ).then(bytes =>
+      WebAssembly.instantiate(bytes, go.importObject)
+    ).then(result =>
+      go.run(result.instance)
+    )
+
+
+
+    let JumpStatus = false
+
+    let RestartStatus = true
+
+    // dead code 01 04 2021
+    // function ChangeJumpStatus () {
+    //     JumpStatus = JumpStatus !== true;
+    // }
+
+    // it is API for wasm
+    function isStatus() {
+      return JumpStatus
+    }
+
+    // it is API for wasm
+    function Restart() {
+      const rt = RestartStatus
+      RestartStatus = false
+      return rt
+    }
+
+
+    document.addEventListener('keydown', function (event) {
+      if (event.defaultPrevented) {
+        return; // Do nothing if the event was already processed
+      }
+
+      switch (event.code) {
+        case "Space": // IE/Edge specific value
+          JumpStatus = true
+          break;
+        case "KeyR":
+          // Do something for "down arrow" key press.
+          RestartStatus = true
+          break;
+        case "KeyP": // IE/Edge specific value
+          if (Time === 1000) {
+            Time = 0
+          } else Time = 1000
+          break;
+      }
+    })
+
+    document.addEventListener('keyup', function (event) {
+      if (event.defaultPrevented) {
+        return; // Do nothing if the event was already processed
+      }
+
+      switch (event.code) {
+        case "Space": // IE/Edge specific value
+          JumpStatus = false
+          break;
+      }
+    })
+
+    //    document.addEventListener('touchstart', function (event) {
+    window.addEventListener('touchstart', function (event) {
+      if (event.touches.length === 1) {
+        JumpStatus = true
+        //do smth
+      }
+    }, false)
+
+    //    document.addEventListener('touchend', function (event) {
+    window.addEventListener('touchend', function (event) {
+      if (event.touches.length === 1) {
+        JumpStatus = false
+        //do smth
+      }
+    }, false)
+
+    const el = document.getElementById("canvas");
+    el.addEventListener('touchstart', function (event) {
+      if (event.touches.length === 1) {
+        JumpStatus = true
+        //do smth
+      }
+    }, false)
+
+    //    document.addEventListener('touchend', function (event) {
+    el.addEventListener('touchend', function (event) {
+      if (event.touches.length === 1) {
+        JumpStatus = false
+        //do smth
+      }
+    }, false)
+
+    function geRays() {
+      try {
+        let str = String.fromCharCode.apply(String, GetRays());
+        return JSON.parse(str);
+        // return obj
+        //console.log(obj)
+      } catch (e) {
+        console.log(e)
+      }
+      return []
+    }
+
+    function geScore() {
+      try {
+        let str = String.fromCharCode.apply(String, GetScore());
+        return JSON.parse(str);
+        //return obj
+        //console.log(obj)
+      } catch (e) {
+        console.log(e)
+      }
+      return []
+    }
+
+    function geStatus() {
+      try {
+        let str = String.fromCharCode.apply(String, GetStatus());
+        return JSON.parse(str);
+        //return obj
+        //console.log(obj)
+      } catch (e) {
+        console.log(e)
+      }
+      return null
+    }
+
+    function print() {
+      console.log(` rays: ${geRays()}`)
+      // console.log(` score: ${geScore()}`)
+      // console.log(` status: ${geStatus()}`)
+    }
+
+    setInterval(print, 16)
+
+
+    ///setTimeout(console.log(GetRays()), pause)
+
+  </script>
+</body>
+
+</html>

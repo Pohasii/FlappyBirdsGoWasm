@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en" style="height: 100%">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+
+<body style="height: 100%">
+
+    <script src="wasm_exec.js"></script>
+
+    <canvas id="canvas" width="1280" height="720" style="border: 1px solid cadetblue"></canvas>
+
+    <script>
+
+        const go = new Go()
+
+            // WebAssembly.instantiate(fetch("lib.wasm"), go.importObject).then((result) => {
+            //     go.run(result.instance)
+            // })
+            // WebAssembly.instantiateStreaming(fetch("lib.wasm"), go.importObject).then((result) => {
+            //     go.run(result.instance)
+            // })
+             //cause wasm needs time
+
+            fetch('lib.wasm').then(response =>
+                response.arrayBuffer()
+            ).then(bytes =>
+                WebAssembly.instantiate(bytes, go.importObject)
+            ).then(result =>
+                go.run(result.instance)
+            )
+
+        setTimeout(()=>{}, 250)
+
+        let JumpStatus = false
+        let RestartStatus = true
+        let countOfBirds = 4
+        let birdsJumpStatus = [false] // [[id, status]] // [bool]
+
+        if (countOfBirds > 1) {
+            for (let i = 0; i < countOfBirds; i++) {
+                birdsJumpStatus.push(false)
+            }
+        }
+        // dean code 01 04 2021
+        // function ChangeJumpStatus () {
+        //     JumpStatus = JumpStatus !== true
+        // }
+
+        // it is API for wasm
+        function getCountOfBirds () {
+            return countOfBirds//JSON.stringify(countOfBirds)
+        }
+
+        // it is API for wasm
+        function getBirdsJumpStatus () {
+            return JSON.stringify(birdsJumpStatus)
+        }
+
+        // it is API for wasm
+        function isStatus() {
+            return JumpStatus
+        }
+
+        // it is API for wasm
+        function Restart() {
+            const co = RestartStatus
+            RestartStatus = false
+            return co
+        }
+
+
+        document.addEventListener('keydown', function (event) {
+            if (event.defaultPrevented) {
+                return // Do nothing if the event was already processed
+            }
+
+            switch (event.code) {
+                case "Space": // IE/Edge specific value
+                    birdsJumpStatus[0] = true
+                    break
+                case "KeyR":
+                    // Do something for "down arrow" key press.
+                    RestartStatus = true
+                    break
+                case "KeyP": // IE/Edge specific value
+                    if (Time === 1000) {
+                        Time = 0
+                    } else Time = 1000
+                    break
+            }
+        })
+
+        document.addEventListener('keyup', function (event) {
+            if (event.defaultPrevented) {
+                return // Do nothing if the event was already processed
+            }
+
+            switch (event.code) {
+                case "Space": // IE/Edge specific value
+                    birdsJumpStatus[0] = false
+                    break
+            }
+        })
+
+        document.addEventListener('touchstart', function (event) {
+            if (event.touches.length === 1) {
+                birdsJumpStatus[0] = true
+                //do smth
+            }
+        }, false)
+
+        document.addEventListener('touchend', function (event) {
+            if (event.touches.length === 1) {
+                birdsJumpStatus[0] = false
+                //do smth
+            }
+        }, false)
+
+        function geRays(id) {
+            try {
+                let str = String.fromCharCode.apply(String, GetRays(id))
+                return JSON.parse(str)
+                // return obj
+                //console.log(obj)
+            } catch (e) {
+                console.log(e)
+            }
+            return []
+        }
+
+        function geScore(id) {
+            try {
+                let str = String.fromCharCode.apply(String, GetScore(id))
+                return JSON.parse(str)
+                //return obj
+                //console.log(obj)
+            } catch (e) {
+                console.log(e)
+            }
+            return []
+        }
+
+        function geStatus(id) {
+            try {
+                let str = String.fromCharCode.apply(String, GetStatus(id))
+                return JSON.parse(str)
+                //return obj
+                //console.log(obj)
+            } catch (e) {
+                console.log(e)
+            }
+            return null
+        }
+
+        let episodesNumber = 500
+        let actionSet = {
+            STAY: '0',
+            JUMP: '1'
+        }
+        // path length to gap
+        let gamma = 0.92
+        let state = []
+        let action
+        let qTable = []//{} // Array(statesLength).fill().map(() => Array(actionsLength).fill(0))
+        let learningRate = 0.005  //0.002
+        let init = 'X'
+        let preScore = 0
+        let f = 0 // frame
+        let speed = 1000/60
+        // let started = false
+        let countF = 0
+
+
+        // function egreedyPolicy(state, epsilon = 0.1) {
+        //     // if random number is lower than epsilon choose a random action
+        //     if (Math.random() < epsilon) {
+        //         return Math.random() < 0.5 ? 0 : 1
+        //     }
+        //     // choose the action with the highest value
+        //     else {
+        //         return Math.max(qTable[state])
+        //     }
+        // }
+
+        function getState(i) {
+            //let rays = geRays()
+            //let rays = `${geRays()}`.split()
+            // let x = rays[3]
+            // let y = rays[1]
+            // return [x, y]//add mom?
+            return geRays(i)
+        }
+
+
+        function getQ(s, a) {
+            let config = [a] // let config = [s[0], s[1], a]
+            config.unshift(s)
+            if (!(config in qTable)) {
+                // If there's no entry in the given Q-table for the given state-action
+                // pair, return a default reward score as 0
+                return 0
+            }
+            return qTable[config]
+        }
+
+
+        function setQ(s, a, r) {
+            let config = [a] // let config = [s[0], s[1], s[2], a]
+            config.unshift(s)
+            if (!(config in qTable)) {
+                qTable[config] = 0
+            }
+            qTable[config] += r
+        }
+
+
+        function getAction(state) {
+            let rewardForStay = getQ(state, actionSet.STAY)
+            let rewardForJump = getQ(state, actionSet.JUMP)
+
+            if (rewardForStay > rewardForJump) {
+                // If reward for Stay is higher, command the flappy bird to stay
+                return actionSet.STAY
+            } else if (rewardForStay < rewardForJump) {
+                // If reward for Jump is higher, command the flappy bird to jump
+                return actionSet.JUMP
+            } else {
+                return actionSet.STAY
+            }
+        }
+
+
+        function rewardBird(s, a, i) {
+            let rewardForState = 1
+            let futureState = getState(i)
+            if (geStatus(i)) {
+                rewardForState += 50
+            } else {
+                rewardForState = -1000
+                console.log('baad')
+            }
+
+            if (geScore(i) > preScore) {
+                rewardForState += 50
+                preScore = geScore(i)
+            } else {
+                rewardForState -= 0.5
+            }
+
+            let optimalFutureValue = Math.max(getQ(futureState, actionSet.STAY),
+                getQ(futureState, actionSet.JUMP))
+            let updateValue = learningRate * (rewardForState + gamma * optimalFutureValue - getQ(s, a))
+            setQ(s, a, updateValue)
+        }
+
+        function implementAction(action, i) {
+            // console.log('action')
+            // console.log(action)
+            if (action === actionSet.JUMP) {
+                birdsJumpStatus[i] = true //JumpStatus = true
+                console.log('jump!')
+            }
+            else {
+                birdsJumpStatus[i] = false
+                //JumpStatus = false
+            }
+        }
+
+
+        function play(i) {
+            if (init === 'X') {
+                init = ''
+                // RestartStatus = true
+                state = getState(i)
+                action = getAction(state)
+                implementAction(action, i)
+            }
+            else {
+                rewardBird(state, action, i)//Reward and learn
+                if (geStatus(i)) {
+                    state = getState(i)
+                    action = getAction(state)
+                    implementAction(action, i)
+                }
+                else {
+                    f = 0
+                    // console.log('restart')
+                    // RestartStatus = true
+                    // console.log(qTable)
+                }
+            }
+            // console.log(qTable.length)
+        }
+
+        function main() {
+
+            let rsStatus = true
+
+            countF += 1
+            if (countF % 100 === 0) {
+                console.log(countF)
+            }
+
+            if (RestartStatus) {
+                setTimeout(()=>{}, 250)
+            } else {
+                for (let i = 0; i < countOfBirds; i++) {
+                    if (geStatus(i)) {
+                        if (f > 20) {
+                            f = 0
+                            play(i)
+                        } else {
+                            f++
+                        }
+
+                        rsStatus = false
+                    } else {
+                        //Loop to learn and play
+                        if (init === 'X') {
+                            birdsJumpStatus[i] = true
+                        } else {
+                            play(i)
+                        }
+                    }
+                }
+                if (rsStatus) {
+                    RestartStatus = true
+                }
+            }
+        }
+
+
+        setInterval(main, speed)
+
+
+        // var counter = 0
+        // var i = setInterval(function () {
+        //     checkStatus()
+
+        //     counter++
+        //     if (counter === 1000) {
+        //         clearInterval(i)
+        //     }
+        // }, 20)
+
+        // function print() {
+        //     console.log(` rays: ${geRays()}`)
+        //     console.log(` score: ${geScore()}`)
+        //     console.log(` status: ${geStatus()}`)
+        // }
+        // while (true) {
+        //     // console.log(geRays())
+        //     sleep(1000)
+        // }
+        // setInterval(print, 1000)
+        //     / setTimeout(console.log(GetRays()), pause)
+
+    </script>
+</body>
+
+</html>
