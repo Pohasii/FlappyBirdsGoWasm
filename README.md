@@ -1,0 +1,2 @@
+# FlappyBirdsGoWasm
+wasm
